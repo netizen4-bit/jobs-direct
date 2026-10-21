@@ -167,6 +167,71 @@ def extract_degree_level(text: str) -> int:
     return 0
 
 
+def detect_job_expiry_status(text: str) -> Dict[str, Any]:
+    """
+    Detects if a job listing has expired, closed, or passed its application deadline.
+    Returns status: 'ACTIVE', 'EXPIRED', or 'UNKNOWN', with detailed reason and deadline if found.
+    """
+    t_lower = text.lower()
+
+    # Explicit closure phrases across major English & Turkish ATS / boards (both ASCII and unicode Turkish characters)
+    closure_patterns = [
+        (r'\b(no longer accepting applications|job is closed|this job has expired|this position has been filled|position closed|posting expired|listing has ended)\b', "Explicit closure announcement found in posting"),
+        (r'\b(ilan(?:[ıi]n)?\s+yay[ıi]mdan\s+kald[ıi]r[ıi]lm[ıi][sş]t[ıi]r|ba[sş]vuruya\s+kapal[ıi]d[ıi]r|ilan(?:[ıi]n)?\s+yay[ıi]m\s+s[üu]resi\s+dolmu[sş]tur|ilan\s+kapanm[ıi][sş]t[ıi]r)\b', "Turkish portal closure notice: ilan yayından kaldırılmış veya süre dolmuş"),
+        (r'\b(this job is no longer available|job not found|error 404|410 gone|page not found)\b', "Job page unavailable or removed")
+    ]
+
+    for pattern, reason in closure_patterns:
+        if re.search(pattern, t_lower):
+            return {
+                "status": "EXPIRED",
+                "is_active": False,
+                "reason": reason,
+                "deadline": None
+            }
+
+    # Deadline extraction patterns (e.g. "Application deadline: 15 October 2026", "Son başvuru tarihi: 01.10.2026")
+    deadline_patterns = [
+        r'(?:application deadline|apply before|closing date|valid until|expires on|deadline)\s*[:\-]?\s*([A-Za-z0-9,.\s/-]{4,25})',
+        r'(?:son ba[sş]vuru tarihi|kapan[ıi][sş] tarihi)\s*[:\-]?\s*([0-9./\-]+)',
+    ]
+
+    parsed_deadline = None
+    for dp in deadline_patterns:
+        m = re.search(dp, text, re.IGNORECASE)
+        if m:
+            raw_date = m.group(1).strip().rstrip(".,")
+            parsed_deadline = raw_date
+            # Try parsing date formats
+            for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%m/%d/%Y", "%B %d, %Y", "%d %B %Y", "%b %d, %Y"):
+                try:
+                    dt = datetime.strptime(raw_date, fmt)
+                    if dt.date() < datetime.today().date():
+                        return {
+                            "status": "EXPIRED",
+                            "is_active": False,
+                            "reason": f"Application deadline ({raw_date}) has passed.",
+                            "deadline": raw_date
+                        }
+                    else:
+                        return {
+                            "status": "ACTIVE",
+                            "is_active": True,
+                            "reason": f"Active position. Valid until {raw_date}.",
+                            "deadline": raw_date
+                        }
+                except Exception:
+                    pass
+            break
+
+    return {
+        "status": "ACTIVE",
+        "is_active": True,
+        "reason": "Listing appears active with no expiration notice detected.",
+        "deadline": parsed_deadline
+    }
+
+
 # ---------------------------------------------------------------------------
 # 1. Multi-Portal Scrapers
 # ---------------------------------------------------------------------------
@@ -276,7 +341,12 @@ async def get_linkedin_detail(job_id: str) -> Dict[str, Any]:
         try:
             resp = await client.get(url, headers=headers)
             if resp.status_code != 200:
-                return {"error": f"LinkedIn returned status {resp.status_code}", "job_id": job_id}
+                return {
+                    "error": f"LinkedIn returned status {resp.status_code}",
+                    "job_id": job_id,
+                    "status": "EXPIRED" if resp.status_code in (404, 410) else "ERROR",
+                    "is_active": False
+                }
 
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -291,6 +361,10 @@ async def get_linkedin_detail(job_id: str) -> Dict[str, Any]:
 
             desc_div = soup.find(class_=re.compile(r"show-more-less-html__markup|description__text"))
             description = desc_div.get_text("\n", strip=True) if desc_div else ""
+
+            # Check for expiration/closure in whole page content
+            full_content = f"{title} {soup.get_text(' ', strip=True)}"
+            expiry = detect_job_expiry_status(full_content)
 
             criteria = {}
             for item in soup.find_all(class_=re.compile(r"description__job-criteria-item")):
@@ -308,9 +382,13 @@ async def get_linkedin_detail(job_id: str) -> Dict[str, Any]:
                 "criteria": criteria,
                 "url": f"https://www.linkedin.com/jobs/view/{job_id}",
                 "portal": "linkedin",
+                "status": expiry["status"],
+                "is_active": expiry["is_active"],
+                "expiry_reason": expiry["reason"],
+                "deadline": expiry["deadline"],
             }
         except Exception as e:
-            return {"error": f"Failed fetching LinkedIn job detail: {str(e)}", "job_id": job_id}
+            return {"error": f"Failed fetching LinkedIn job detail: {str(e)}", "job_id": job_id, "status": "ERROR"}
 
 
 async def search_himalayas(
@@ -359,45 +437,72 @@ async def search_himalayas(
     return results
 
 
-def search_site_via_ddg(site: str, query: str, limit: int = 10, portal_name: str = "web") -> List[Dict[str, Any]]:
-    """Discovers live indexed jobs from site via DuckDuckGo search without rate limits or bot walls."""
+def search_site_via_ddg(
+    site: str,
+    query: str,
+    limit: int = 10,
+    portal_name: str = "web",
+    timelimit: Optional[str] = "m"
+) -> List[Dict[str, Any]]:
+    """Discovers live indexed jobs from site via DuckDuckGo search with freshness filtering."""
     results: List[Dict[str, Any]] = []
     search_queries = [f"site:{site} {query}".strip(), f'"{site}" {query} jobs'.strip()]
     
-    for sq in search_queries:
-        try:
-            with DDGS() as ddgs:
-                raw_results = list(ddgs.text(sq, max_results=limit * 2))
-                for item in raw_results:
-                    if len(results) >= limit:
-                        break
-                    href = item.get("href", "")
-                    title = clean_text(item.get("title", ""))
-                    if href.rstrip("/") in (f"https://{site}", f"https://www.{site}", f"http://{site}"):
-                        continue
-                    clean_title = re.sub(rf"\s*[-|]\s*.*{re.escape(site)}.*", "", title, flags=re.IGNORECASE).strip()
-                    results.append(
-                        {
-                            "id": href,
-                            "title": clean_title or title,
-                            "company": portal_name.capitalize(),
-                            "location": "Remote" if "remote" in site else "Global / Specified in post",
-                            "date": datetime.today().strftime("%Y-%m-%d"),
-                            "snippet": clean_text(item.get("body", "")),
-                            "url": href,
-                            "portal": portal_name,
-                        }
-                    )
-            if results:
-                break
-        except Exception:
-            continue
+    # Try with timelimit first to enforce fresh, unexpired postings; fallback if zero results
+    attempts = [timelimit, None] if timelimit else [None]
+
+    for tl in attempts:
+        for sq in search_queries:
+            try:
+                with DDGS() as ddgs:
+                    kwargs: Dict[str, Any] = {"max_results": limit * 2}
+                    if tl:
+                        kwargs["timelimit"] = tl
+                    raw_results = list(ddgs.text(sq, **kwargs))
+                    for item in raw_results:
+                        if len(results) >= limit:
+                            break
+                        href = item.get("href", "")
+                        title = clean_text(item.get("title", ""))
+                        body = clean_text(item.get("body", ""))
+                        if href.rstrip("/") in (f"https://{site}", f"https://www.{site}", f"http://{site}"):
+                            continue
+
+                        # Check if snippet or title indicates closed position
+                        expiry_check = detect_job_expiry_status(f"{title} {body}")
+                        if not expiry_check["is_active"]:
+                            continue
+
+                        clean_title = re.sub(rf"\s*[-|]\s*.*{re.escape(site)}.*", "", title, flags=re.IGNORECASE).strip()
+                        results.append(
+                            {
+                                "id": href,
+                                "title": clean_title or title,
+                                "company": portal_name.capitalize(),
+                                "location": "Remote" if "remote" in site else "Global / Specified in post",
+                                "date": datetime.today().strftime("%Y-%m-%d"),
+                                "snippet": body,
+                                "url": href,
+                                "portal": portal_name,
+                                "status": "ACTIVE",
+                            }
+                        )
+                if results:
+                    break
+            except Exception:
+                continue
+        if results:
+            break
 
     return results
 
 
-def search_kariyer(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Discovers active job postings on Kariyer.net (Turkey's premier job portal)."""
+def search_kariyer(
+    query: str,
+    limit: int = 10,
+    timelimit: Optional[str] = "m"
+) -> List[Dict[str, Any]]:
+    """Discovers active job postings on Kariyer.net (Turkey's premier job portal) with freshness filtering."""
     results: List[Dict[str, Any]] = []
     queries = [
         f"site:kariyer.net/is-ilani {query}".strip(),
@@ -405,41 +510,55 @@ def search_kariyer(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         f'"kariyer.net" {query} iş ilanları'.strip(),
     ]
 
-    for q in queries:
-        try:
-            with DDGS() as ddgs:
-                raw = list(ddgs.text(q, max_results=limit * 2))
-                for item in raw:
-                    if len(results) >= limit:
-                        break
-                    href = item.get("href", "")
-                    title = clean_text(item.get("title", ""))
-                    body = clean_text(item.get("body", ""))
+    attempts = [timelimit, None] if timelimit else [None]
 
-                    if "/is-ilani/" in href or "kariyer.net" in href:
-                        clean_title = re.sub(r"\s*[-|]\s*.*kariyer\.net.*", "", title, flags=re.IGNORECASE).strip()
-                        comp = "Kariyer.net Employer"
-                        if " - " in clean_title:
-                            parts = clean_title.split(" - ")
-                            comp = parts[0].strip()
-                            clean_title = " - ".join(parts[1:]).strip()
+    for tl in attempts:
+        for q in queries:
+            try:
+                with DDGS() as ddgs:
+                    kwargs: Dict[str, Any] = {"max_results": limit * 2}
+                    if tl:
+                        kwargs["timelimit"] = tl
+                    raw = list(ddgs.text(q, **kwargs))
+                    for item in raw:
+                        if len(results) >= limit:
+                            break
+                        href = item.get("href", "")
+                        title = clean_text(item.get("title", ""))
+                        body = clean_text(item.get("body", ""))
 
-                        results.append(
-                            {
-                                "id": href,
-                                "title": clean_title or title,
-                                "company": comp,
-                                "location": "Türkiye (Kariyer.net)",
-                                "date": datetime.today().strftime("%Y-%m-%d"),
-                                "snippet": body,
-                                "url": href,
-                                "portal": "kariyer.net",
-                            }
-                        )
-            if results:
-                break
-        except Exception:
-            continue
+                        # Pre-filter closed listings from snippet
+                        expiry_check = detect_job_expiry_status(f"{title} {body}")
+                        if not expiry_check["is_active"]:
+                            continue
+
+                        if "/is-ilani/" in href or "kariyer.net" in href:
+                            clean_title = re.sub(r"\s*[-|]\s*.*kariyer\.net.*", "", title, flags=re.IGNORECASE).strip()
+                            comp = "Kariyer.net Employer"
+                            if " - " in clean_title:
+                                parts = clean_title.split(" - ")
+                                comp = parts[0].strip()
+                                clean_title = " - ".join(parts[1:]).strip()
+
+                            results.append(
+                                {
+                                    "id": href,
+                                    "title": clean_title or title,
+                                    "company": comp,
+                                    "location": "Türkiye (Kariyer.net)",
+                                    "date": datetime.today().strftime("%Y-%m-%d"),
+                                    "snippet": body,
+                                    "url": href,
+                                    "portal": "kariyer.net",
+                                    "status": "ACTIVE",
+                                }
+                            )
+                if results:
+                    break
+            except Exception:
+                continue
+        if results:
+            break
 
     return results
 
@@ -454,14 +573,14 @@ async def search_jobs(
     location: str = "Remote",
     portal: str = "all",
     remote: Optional[str] = None,
-    jobage_days: Optional[int] = None,
+    jobage_days: Optional[int] = 14,
     limit: int = 10,
 ) -> str:
     """
-    Searches for open job postings across supported portals:
-    - linkedin: Global postings (remote & local)
+    Searches for open, active job postings across supported portals with automatic freshness filtering:
+    - linkedin: Global postings (remote & local, filtered by jobage_days)
     - himalayas: Curated remote tech jobs with salary transparency
-    - remote_co: Remote.co listings
+    - remote_co: Remote.co listings (fresh indexing via DuckDuckGo)
     - careerhound: CareerHound.io hidden/direct jobs
     - hiredchina: HiredChina.com bilingual & international roles
     - kariyer: Kariyer.net Turkish & regional positions
@@ -472,11 +591,23 @@ async def search_jobs(
         location: Target location or "Remote".
         portal: "linkedin", "himalayas", "remote_co", "careerhound", "hiredchina", "kariyer", or "all". Default: "all".
         remote: Filter workplace type: "remote", "hybrid", or "onsite".
-        jobage_days: Filter postings published within the last N days (e.g. 1, 7, 14, 30).
+        jobage_days: Filter postings published within the last N days (default: 14 to filter out dead/expired jobs).
         limit: Maximum number of job postings to return (default 10).
     """
     p = portal.lower().strip()
     collected: List[Dict[str, Any]] = []
+
+    # Map jobage_days to DuckDuckGo timelimit: <=1 day: 'd', <=7: 'w', <=30: 'm', else: None
+    ddg_timelimit = "m"
+    if jobage_days is not None:
+        if jobage_days <= 1:
+            ddg_timelimit = "d"
+        elif jobage_days <= 7:
+            ddg_timelimit = "w"
+        elif jobage_days <= 31:
+            ddg_timelimit = "m"
+        else:
+            ddg_timelimit = None
 
     if p in ("linkedin", "all"):
         linkedin_results = await search_linkedin(query, location, jobage_days, remote, limit)
@@ -487,19 +618,19 @@ async def search_jobs(
         collected.extend(himalayas_results)
 
     if p in ("kariyer", "kariyer.net", "all"):
-        kariyer_results = search_kariyer(query, limit=limit)
+        kariyer_results = search_kariyer(query, limit=limit, timelimit=ddg_timelimit)
         collected.extend(kariyer_results)
 
     if p in ("remote_co", "remote.co", "all"):
-        remote_co_results = search_site_via_ddg("remote.co", query, limit=limit, portal_name="remote.co")
+        remote_co_results = search_site_via_ddg("remote.co", query, limit=limit, portal_name="remote.co", timelimit=ddg_timelimit)
         collected.extend(remote_co_results)
 
     if p in ("careerhound", "careerhound.io", "all"):
-        hound_results = search_site_via_ddg("careerhound.io", query, limit=limit, portal_name="careerhound.io")
+        hound_results = search_site_via_ddg("careerhound.io", query, limit=limit, portal_name="careerhound.io", timelimit=ddg_timelimit)
         collected.extend(hound_results)
 
     if p in ("hiredchina", "hiredchina.com", "all"):
-        china_results = search_site_via_ddg("hiredchina.com", query, limit=limit, portal_name="hiredchina.com")
+        china_results = search_site_via_ddg("hiredchina.com", query, limit=limit, portal_name="hiredchina.com", timelimit=ddg_timelimit)
         collected.extend(china_results)
 
     if not collected:
@@ -531,23 +662,39 @@ async def get_job_details(job_id_or_url: str, portal: str = "auto") -> str:
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             try:
                 resp = await client.get(clean_id, headers={"User-Agent": DEFAULT_UA})
+                if resp.status_code in (404, 410):
+                    return json.dumps({
+                        "url": clean_id,
+                        "status": "EXPIRED",
+                        "is_active": False,
+                        "error": f"Job posting returned HTTP {resp.status_code} (Not Found / Gone)."
+                    }, indent=2)
+
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for tag in soup(["script", "style", "nav", "footer"]):
                     tag.decompose()
                 text = soup.get_text("\n", strip=True)
                 title = soup.title.string if soup.title else "Job Posting"
                 portal_tag = "kariyer.net" if "kariyer.net" in clean_id else "web"
+
+                # Detect if listing has expired or closed
+                expiry = detect_job_expiry_status(f"{title}\n{text}")
+
                 return json.dumps(
                     {
                         "url": clean_id,
                         "title": clean_text(title),
+                        "status": expiry["status"],
+                        "is_active": expiry["is_active"],
+                        "expiry_reason": expiry["reason"],
+                        "deadline": expiry["deadline"],
                         "description": text[:8000],
                         "portal": portal_tag,
                     },
                     indent=2,
                 )
             except Exception as e:
-                return json.dumps({"error": f"Failed fetching URL: {str(e)}", "url": clean_id})
+                return json.dumps({"error": f"Failed fetching URL: {str(e)}", "url": clean_id, "status": "ERROR"})
 
     return json.dumps({"error": f"Unable to retrieve job details for identifier '{job_id_or_url}'."})
 
@@ -645,8 +792,17 @@ def evaluate_job_fit(
     total_fit_score = round(domain_score + qualification_score + skills_score + logistics_points)
     total_fit_score = min(max(total_fit_score, 0), 100)
 
+    # 5. Expiration / Active Status Verification Gate
+    expiry_check = detect_job_expiry_status(job_description)
+    is_job_active = expiry_check["is_active"]
+    expiry_warning = None
+
     # Intelligent Verdict determination
-    if language_status == "FAIL":
+    if not is_job_active:
+        verdict = f"CLOSED_OR_EXPIRED ({expiry_check['reason']})"
+        expiry_warning = f"⚠️ WARNING: This position appears to be closed or expired. Applying may no longer be possible. ({expiry_check['reason']})"
+        total_fit_score = min(total_fit_score, 20)  # Heavy penalty for expired jobs
+    elif language_status == "FAIL":
         verdict = "REJECTED (Language Gate Restriction)"
     elif eligibility_status == "FLAG" and not candidate_citizenship:
         verdict = "VERIFICATION_REQUIRED (Security / Citizenship Gate)"
@@ -662,6 +818,9 @@ def evaluate_job_fit(
     evaluation = {
         "total_fit_score": total_fit_score,
         "verdict": verdict,
+        "is_active_listing": is_job_active,
+        "expiry_warning": expiry_warning,
+        "deadline": expiry_check["deadline"],
         "score_breakdown": {
             "tier1_domain_affinity": {
                 "score": domain_score,
