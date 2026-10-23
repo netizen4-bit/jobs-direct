@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.netizen4-bit/jobs-direct",
+  "version": "1.0.0",
+  "description": "Multi-portal remote job search MCP server with 4-tier dynamic ATS fit evaluation, resume tailoring, cover letter generation, and Word (.docx) export. Searches LinkedIn, Himalayas, Kariyer.net, Remote.co, CareerHound, and HiredChina with automatic deadline/expiration detection.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/netizen4-bit/jobs-direct"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "jobs-direct",
+      "version": "1.0.0",
+      "runtime": "python",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": []
+    }
+  ]
+}
