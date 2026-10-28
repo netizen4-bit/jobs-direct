@@ -112,7 +112,7 @@ jobs-direct/
 │   └── osint-hiring-bypass/
 │       └── SKILL.md             # Double-tap outreach: direct-ATS dorking, crt.sh enum & zero-bounce SMTP
 ├── output/                      # Auto-created portable directory for verified hiring contacts CSV
-├── jobs_direct.py               # FastMCP Server exposing 11 core tools (Search, Fit, Tailor, OSINT, SMTP)
+├── jobs_direct.py               # FastMCP Server exposing 15 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching)
 ├── agent.py                     # Autonomous interactive agent runner for local LLMs (Ollama / Qwen)
 ├── requirements.txt             # Core Python dependencies
 ├── CODE_OF_CONDUCT.md           # Community guidelines
@@ -124,58 +124,72 @@ jobs-direct/
 
 ---
 
-## 🛠️ MCP Tools Reference (Full 11-Tool Suite)
+## 🛠️ MCP Tools Reference (Full 15-Tool Suite)
 
-JobsDirect-MCP v2.0 exposes **11 native MCP tools** designed for end-to-end career automation:
+JobsDirect-MCP v2.0 exposes **15 native MCP tools** designed for end-to-end career intelligence and automated job matching:
 
-### 1. `search_jobs`
+### 🚀 1. `find_jobs_from_profile` *(Automated Profile-to-Job Matching Engine)*
+* **Input:** `profile_url` (str, e.g. LinkedIn, GitHub, or portfolio URL), `location` (str, default "Remote"), `portal` (str, default "all"), `limit` (int, default 10)
+* **What it does:** The ultimate one-click career automation tool. Takes a candidate's profile URL, automatically scrapes and extracts their career footprint and domain via our cookieless 2-tier waterfall + DDGS public snippet engine, queries direct enterprise ATS boards & aggregators, executes deterministic 4-Tier ATS scoring on all found opportunities, and outputs a ranked leaderboard of matched positions with direct application URLs.
+
+### 🌐 2. `scrape_profile_or_page` *(Cookieless Web & Social Scraper)*
+* **Input:** `url` (str)
+* **What it does:** Scrapes candidate profile pages, portfolio sites, GitHub repositories, or company web pages using a high-performance 2-tier waterfall (fast HTTP with desktop browser headers + Playwright headless fallback). Features a **smart DDGS public snippet fallback** for LinkedIn authwalls, extracting public bio, role titles, work highlights, Cloudflare XOR-obfuscated emails, phone numbers, and social links completely cookieless with zero account ban risks.
+
+### 3. `search_jobs`
 * **Input:** `query` (str), `location` (str, default "Remote"), `portal` (str, default "all"), `remote` (str), `jobage_days` (int, default 14), `limit` (int, default 10)
 * **What it does:** Searches open postings across direct enterprise ATS boards (`boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`, `apply.workable.com`, `jobs.smartrecruiters.com`) and major aggregators (LinkedIn, Himalayas, Kariyer.net, Remote.co, CareerHound, HiredChina) with automated English & Turkish expiration pre-filtering.
 
-### 2. `get_job_details`
+### 4. `get_job_details`
 * **Input:** `job_id_or_url` (str), `portal` (str, default "auto")
 * **What it does:** Fetches complete job requirements, seniority criteria, active expiration status, and extracts plaintext and Cloudflare XOR-obfuscated recruiter emails directly from the listing HTML.
 
-### 3. `evaluate_job_fit`
+### 5. `evaluate_job_fit`
 * **Input:** `candidate_profile` (str), `job_description` (str), `candidate_citizenship` (optional str), `candidate_languages` (optional list[str])
 * **What it does:** Executes the deterministic 4-Tier ATS Evaluation Engine (40% Domain Affinity, 20% Qualifications Gate, 30% Core Skills, 10% Logistics/Language Gate). Returns numerical scores and routes through the 7-Branch Verdict Decision Tree.
 
-### 4. `tailor_resume`
+### 6. `tailor_resume`
 * **Input:** `candidate_cv` (str), `job_description` (str), `target_role` (optional str), `target_company` (optional str)
 * **What it does:** Stage 1 & 2 Positioning: Adopts the Senior Recruiter persona for the detected Tier 1 domain, extracts real quantified lines from the candidate's CV (never invents metrics), and generates an **Exact JD Keyword Mirroring Matrix**, high-agency action-verb STAR bullets, and an **Honest Bridge Strategy** for missing skills.
 
-### 5. `generate_cover_letter`
+### 7. `generate_cover_letter`
 * **Input:** `candidate_profile` (str), `job_description` (str), `company_name` (str), `job_title` (str), `hiring_manager` (optional str)
 * **What it does:** Stage 3 Positioning: Generates a high-converting cover letter under a strict **250-word limit** in a confident peer-level problem-solving tone, anchored to **exactly one verified quantified achievement** mapped to the JD's primary challenge.
 
-### 6. `optimize_linkedin_profile`
+### 8. `optimize_linkedin_profile`
 * **Input:** `candidate_cv` (str), `target_job_title` (str), `target_industry` (optional str)
 * **What it does:** Stage 4 Positioning: Generates 3 outcome-focused Headlines (<220 chars), a **Recruiter Boolean Search Keyword Bank** (exact strings used on LinkedIn Recruiter), and an indexed About section.
 
-### 7. `generate_interview_prep`
+### 9. `generate_interview_prep`
 * **Input:** `candidate_cv` (str), `job_description` (str), `target_role` (optional str)
 * **What it does:** Stage 5 Positioning: Cross-references candidate CV achievements with JD priorities to construct the **10 most likely interview questions** and STAR answer blueprints (covering Role Architecture, Functional Verification, Gap Stress-Tests with Honest Bridges, and Behavioral Leadership).
 
-### 8. `osint_employer_recon`
+### 10. `osint_employer_recon`
 * **Input:** `domain` (str)
 * **What it does:** Zero-cost OSINT reconnaissance:
   * **SSL Certificate Transparency (crt.sh):** Enumerates hidden HR, career, talent, and direct ATS subdomains (`careers.*`, `talent.*`, `hr.*`, `workday.*`, `greenhouse.*`).
   * **Mail Infrastructure Fingerprinting:** Determines whether the employer uses Google Workspace, Microsoft 365, Zoho, Proton, or self-hosted SMTP via DNS MX.
   * **Schema.org JSON-LD Extraction:** Extracts legal company name, official telephone, contact email, and structured social profiles.
 
-### 9. `enrich_hiring_contacts`
+### 11. `enrich_hiring_contacts`
 * **Input:** `domain` (str), `hiring_manager_first_name` (optional str), `hiring_manager_last_name` (optional str)
 * **What it does:** Deep-scrapes corporate pages (`/careers`, `/team`, `/contact`) for Cloudflare XOR emails and phone numbers, generates executive email permutations, executes **zero-bounce port-25 SMTP verification with random-probe catch-all bounce defense**, and appends verified contacts to `output/hiring_contacts_output.csv`.
 
-### 10. `export_to_docx`
+### 12. `prepare_job_application`
+* **Input:** `job_id_or_url` (str), `candidate_profile` (str), `portal` (str, default "auto"), `company_domain` (optional str)
+* **What it does:** Complete 5-Stage end-to-end packager: pulls JD details, runs 4-Tier evaluation, generates tailored STAR resume bullets, generates 250-word cover letter, creates 10-question interview prep blueprint, and optionally performs zero-bounce SMTP enrichment for the hiring team in a single call.
+
+### 13. `export_to_docx`
 * **Input:** `title` (str), `content` (str), `output_filename` (optional str)
 * **What it does:** Formats and exports tailored resumes, cover letters, or evaluation reports as an executive-styled Microsoft Word (`.docx`) document directly onto the user's Desktop.
 
-### 11. `track_application`
+### 14. `track_application`
 * **Input:** `action` ("add", "list", "update"), `job_id`, `company`, `role`, `portal`, `status`, `notes`, `salary`
 * **What it does:** Persistently manages and logs job applications in a central CSV tracker (`job_applications_tracker.csv`) on the Desktop.
 
-*(Utility tool `lookup_salary_benchmark` is also included for global and regional salary guidance).*
+### 15. `lookup_salary_benchmark`
+* **Input:** `role` (str), `location` (optional str)
+* **What it does:** Provides instant market compensation benchmark ranges across Junior, Mid, and Senior tiers for role negotiations (USD and local TRY currencies).
 
 ---
 
@@ -207,7 +221,7 @@ Install and configure the JobsDirect MCP server into my Antigravity setup:
    - Args: Full absolute path to `jobs_direct.py` (ensure Windows backslashes are escaped)
    - Environment variables: Set `JOBSDIRECT_CONTACTS_OUTPUT` to the absolute path of `output/hiring_contacts_output.csv` inside the repo.
 4. Copy the bundled agent skills (`skills/hybrid-ats-positioning` and `skills/osint-hiring-bypass`) into `~/.gemini/config/skills/`.
-5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 11 MCP tools are registered.
+5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 15 MCP tools are registered.
 ````
 
 ---

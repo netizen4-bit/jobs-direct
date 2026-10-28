@@ -2071,6 +2071,33 @@ async def scrape_profile_or_page(url: str) -> str:
                 tag.decompose()
             result["page_text"] = clean_text(soup.get_text(" ", strip=True))[:6000]
 
+        # Smart search engine fallback for LinkedIn authwalls
+        if "linkedin.com/in/" in clean_url and (not result["page_text"] or len(result["page_text"]) < 200 or "Sign Up" in result["title"] or "Sign in" in result["title"]):
+            u_match = re.search(r"linkedin\.com/in/([^/?#]+)", clean_url)
+            if u_match:
+                username = u_match.group(1).replace("-", " ")
+                ddg_items = []
+                try:
+                    with DDGS() as ddgs:
+                        ddg_items = list(ddgs.text(f"{username} linkedin", max_results=4))
+                except Exception:
+                    pass
+
+                if ddg_items:
+                    snippets = []
+                    for it in ddg_items:
+                        t = it.get("title", "")
+                        b = it.get("body", "")
+                        if t and "sign up" not in t.lower() and "sign in" not in t.lower():
+                            snippets.append(t)
+                        if b:
+                            snippets.append(b)
+                    if snippets:
+                        result["title"] = ddg_items[0].get("title", f"{username} LinkedIn Profile")
+                        result["page_text"] = " ".join(snippets)
+                        result["method_used"] = "ddgs_public_snippet_fallback"
+                        result["status"] = "ok"
+
         mp_contacts = extract_marketplace_contacts(raw_html)
         cf_emails = extract_cf_emails(raw_html)
         all_emails = sorted(list(set(mp_contacts["emails"] + cf_emails)))
@@ -2078,11 +2105,177 @@ async def scrape_profile_or_page(url: str) -> str:
         result["phones"] = mp_contacts["phones"]
         result["social_links"] = extract_social_links(raw_html)
     else:
-        result["status"] = "failed_to_retrieve"
-        result["error"] = "Unable to scrape URL; site blocked unauthenticated crawlers or returned no content."
+        # Fallback search if direct fetch failed
+        if "linkedin.com/in/" in clean_url:
+            u_match = re.search(r"linkedin\.com/in/([^/?#]+)", clean_url)
+            if u_match:
+                username = u_match.group(1).replace("-", " ")
+                try:
+                    with DDGS() as ddgs:
+                        ddg_items = list(ddgs.text(f'{username} linkedin', max_results=3))
+                        snippets = [it.get("title", "") + " " + it.get("body", "") for it in ddg_items if it.get("title") or it.get("body")]
+                        if snippets:
+                            result["title"] = ddg_items[0].get("title", f"{username} Profile")
+                            result["page_text"] = " ".join(snippets)
+                            result["method_used"] = "ddgs_public_snippet_fallback"
+                            result["status"] = "ok"
+                except Exception:
+                    pass
+
+        if not result["page_text"]:
+            result["status"] = "failed_to_retrieve"
+            result["error"] = "Unable to scrape URL; site blocked unauthenticated crawlers or returned no content."
 
     res_json = json.dumps(result, indent=2)
     return _maybe_append_support(res_json, count)
+
+
+# ---------------------------------------------------------------------------
+# MCP Tool: find_jobs_from_profile (End-to-End Profile-to-Job Matcher)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def find_jobs_from_profile(
+    profile_url: str,
+    location: str = "Remote",
+    portal: str = "all",
+    limit: int = 10,
+) -> str:
+    """
+    End-to-End Profile-to-Job Matching Engine:
+    1. Scrapes the candidate's profile URL (LinkedIn, GitHub, portfolio, personal bio).
+    2. Extracts candidate's primary industry domain, key skills, and target role title.
+    3. Automatically searches direct enterprise ATS boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters) and aggregators.
+    4. Runs deterministic 4-Tier ATS Fit Evaluation on all discovered jobs against the scraped profile.
+    5. Returns a ranked match leaderboard with match scores, verdicts, and direct application links.
+
+    Args:
+        profile_url: Candidate profile link (e.g. 'https://linkedin.com/in/username', 'https://github.com/username', portfolio URL).
+        location: Target location or 'Remote' (default: 'Remote').
+        portal: 'direct_ats', 'linkedin', 'himalayas', 'kariyer', 'remote_co', or 'all' (default: 'all').
+        limit: Number of job postings to return (default: 10).
+    """
+    count = _increment_counter()
+
+    # 1. Scrape profile
+    profile_raw = await scrape_profile_or_page(profile_url)
+    try:
+        profile_data = json.loads(profile_raw)
+    except Exception:
+        profile_data = {"page_text": profile_raw, "title": "Candidate Profile"}
+
+    page_text = profile_data.get("page_text", "")
+    page_title = profile_data.get("title", "")
+    combined_profile = f"{page_title}\n{page_text}"
+
+    if not page_text or len(page_text.strip()) < 30:
+        return _maybe_append_support(json.dumps({
+            "error": "Could not extract sufficient text from the profile link. Please paste a brief snippet of your experience/skills alongside the link.",
+            "profile_url": profile_url
+        }, indent=2), count)
+
+    # 2. Extract domain, skills, and target role
+    cand_domains = extract_domains(combined_profile)
+    primary_domain = list(cand_domains.keys())[0] if cand_domains else "Technology, Engineering & Operations"
+
+    functional_lexicon = [
+        "agile", "scrum", "sprint", "kanban", "waterfall", "jira", "confluence",
+        "project management", "pmp", "stakeholder management", "roadmap", "milestone",
+        "kpi", "okr", "budget", "p&l", "cross-functional", "vendor management", "rfp", "rfq",
+        "python", "javascript", "typescript", "react", "sql", "aws", "gcp", "azure", "docker",
+        "kubernetes", "git", "ci/cd", "rest api", "graphql", "ai", "machine learning", "data analytics",
+        "crm", "erp", "salesforce", "odoo", "dynamics", "hubspot", "b2b sales", "pipeline", "gtm"
+    ]
+    cand_lower = combined_profile.lower()
+    matched_skills = [kw for kw in functional_lexicon if re.search(rf"\b{re.escape(kw)}\b", cand_lower)]
+
+    # Infer target role keyword
+    role_candidates = [
+        "technical project manager", "project manager", "program manager", "product manager",
+        "software engineer", "frontend developer", "backend developer", "full stack developer",
+        "data engineer", "data scientist", "devops engineer", "cloud architect",
+        "operations manager", "account executive", "b2b sales", "marketing manager",
+        "b2b lead generation", "lead generation", "sales development", "business development",
+        "strategic partner"
+    ]
+    detected_role = None
+    for rc in role_candidates:
+        if rc in cand_lower:
+            detected_role = rc
+            break
+
+    if detected_role and any(bad in detected_role.lower() for bad in ["sign up", "sign in", "log in", "linkedin"]):
+        detected_role = None
+
+    if not detected_role and page_title:
+        clean_t = re.sub(r"\s*[-|]\s*.*linkedin.*", "", page_title, flags=re.IGNORECASE).strip()
+        parts = clean_t.split(" - ")
+        if len(parts) > 1 and not any(bad in parts[1].lower() for bad in ["sign up", "sign in", "log in", "profesyonel"]):
+            detected_role = parts[1].strip()
+        elif not any(bad in clean_t.lower() for bad in ["sign up", "sign in", "log in", "profesyonel"]):
+            detected_role = clean_t
+
+    search_query = detected_role or (matched_skills[0] if matched_skills else primary_domain.split(",")[0])
+
+    # 3. Search jobs across direct ATS & portals
+    jobs_json = await search_jobs(query=search_query, location=location, portal=portal, limit=limit)
+    try:
+        jobs_list = json.loads(jobs_json)
+        if isinstance(jobs_list, dict) and "results" in jobs_list:
+            jobs_list = jobs_list["results"]
+    except Exception:
+        jobs_list = []
+
+    # 4. Evaluate fit for each found job
+    evaluated_jobs = []
+    if isinstance(jobs_list, list):
+        for job in jobs_list:
+            jd_text = f"{job.get('title', '')} {job.get('snippet', '')} {job.get('company', '')}"
+            fit_json = evaluate_job_fit(combined_profile, jd_text)
+            try:
+                fit_data = json.loads(fit_json)
+            except Exception:
+                fit_data = {"total_fit_score": 60, "verdict": "MODERATE_MATCH"}
+
+            evaluated_jobs.append({
+                "job_title": job.get("title"),
+                "company": job.get("company"),
+                "portal": job.get("portal"),
+                "location": job.get("location"),
+                "url": job.get("url"),
+                "total_fit_score": fit_data.get("total_fit_score", 0),
+                "verdict": fit_data.get("verdict", "N/A"),
+                "domain_match": fit_data.get("score_breakdown", {}).get("tier1_domain_affinity", {}).get("domain_match_ratio", "N/A"),
+                "matched_skills": fit_data.get("score_breakdown", {}).get("tier3_functional_skills", {}).get("matched_skills", []),
+            })
+
+        # Sort by fit score descending
+        evaluated_jobs.sort(key=lambda x: x["total_fit_score"], reverse=True)
+
+    result_package = {
+        "candidate_snapshot": {
+            "profile_url": profile_url,
+            "detected_role": search_query,
+            "primary_industry_domain": primary_domain,
+            "detected_skills": matched_skills[:8],
+            "method_used": profile_data.get("method_used", "httpx"),
+        },
+        "search_parameters": {
+            "query_used": search_query,
+            "location": location,
+            "portal": portal,
+            "total_jobs_evaluated": len(evaluated_jobs),
+        },
+        "ranked_jobs": evaluated_jobs[:limit],
+        "next_actions": [
+            "1. Select a top match from the ranked list above.",
+            "2. Run tailor_resume and generate_cover_letter for the target URL.",
+            "3. Run enrich_hiring_contacts with the company domain for direct double-tap outreach."
+        ]
+    }
+
+    res_str = json.dumps(result_package, indent=2)
+    return _maybe_append_support(res_str, count)
 
 
 # ---------------------------------------------------------------------------

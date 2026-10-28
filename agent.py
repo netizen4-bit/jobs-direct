@@ -384,6 +384,93 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_jobs_from_profile",
+            "description": (
+                "Automated Profile-to-Job Matching Engine: Takes a candidate's profile URL (LinkedIn, GitHub, portfolio, personal bio), "
+                "scrapes their page, extracts domain affinity and key skills, searches direct enterprise ATS boards & aggregators, "
+                "and runs deterministic 4-Tier ATS fit scoring on all found opportunities."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "profile_url": {
+                        "type": "string",
+                        "description": "Full URL of candidate profile (e.g. 'https://linkedin.com/in/username', 'https://github.com/username').",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Target job location (default 'Remote').",
+                    },
+                    "portal": {
+                        "type": "string",
+                        "description": "'direct_ats', 'linkedin', 'himalayas', 'kariyer', 'remote_co', or 'all' (default 'all').",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of jobs to return (default 10).",
+                    },
+                },
+                "required": ["profile_url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "prepare_job_application",
+            "description": (
+                "Automated end-to-end 5-Stage application packager: Fetches full job details, evaluates 4-Tier ATS fit, "
+                "tailors STAR bullets with JD keyword mirroring, drafts a 250-word max cover letter, generates a 10-question "
+                "interview prep blueprint, and optionally enriches hiring contacts with zero-bounce SMTP verification."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_id_or_url": {
+                        "type": "string",
+                        "description": "Job posting identifier or URL.",
+                    },
+                    "candidate_profile": {
+                        "type": "string",
+                        "description": "Candidate CV, skills, and background text.",
+                    },
+                    "portal": {
+                        "type": "string",
+                        "description": "Portal source ('direct_ats', 'linkedin', 'himalayas', 'kariyer', 'auto').",
+                    },
+                    "company_domain": {
+                        "type": "string",
+                        "description": "Optional employer domain (e.g. 'fluxon.com') to enrich hiring contacts.",
+                    },
+                },
+                "required": ["job_id_or_url", "candidate_profile"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "lookup_salary_benchmark",
+            "description": "Provides standard salary benchmark ranges and guidance for role compensation negotiations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "description": "Job role or title (e.g. 'Software Engineer', 'Project Manager').",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Geographic market ('US', 'Europe', 'Türkiye', 'Remote').",
+                    },
+                },
+                "required": ["role"],
+            },
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -395,7 +482,13 @@ async def execute_tool(name: str, args: Dict[str, Any]) -> str:
     print(f"      Args: {json.dumps(args, ensure_ascii=False)[:180]}")
 
     try:
-        if name == "search_jobs":
+        if name == "find_jobs_from_profile":
+            result = await jobs_direct.find_jobs_from_profile(**args)
+        elif name == "prepare_job_application":
+            result = await jobs_direct.prepare_job_application(**args)
+        elif name == "lookup_salary_benchmark":
+            result = jobs_direct.lookup_salary_benchmark(**args)
+        elif name == "search_jobs":
             result = await jobs_direct.search_jobs(**args)
         elif name == "get_job_details":
             result = await jobs_direct.get_job_details(**args)
