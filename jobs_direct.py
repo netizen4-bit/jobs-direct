@@ -2494,38 +2494,141 @@ def export_to_docx(
     title: str,
     content: str,
     output_filename: Optional[str] = None,
+    photo_path: Optional[str] = None,
+    template_style: str = "executive_photo",
 ) -> str:
     """
     Saves job search results, tailored resumes, cover letters, or evaluation reports
     as an executive-styled Microsoft Word document (.docx) on the user's Desktop.
+    
+    When exporting a CV/Resume (or when photo_path is provided), it automatically applies
+    an Executive 2-Column Template with a styled Profile Photo slot (or embeds the photo directly).
 
     Args:
         title: Main document title (e.g. 'Tailored_CV_AMETEK', 'Cover_Letter_Fluxon', 'Job_Matching_Report').
         content: Markdown or formatted plain text content to write into the document.
         output_filename: Optional specific filename. Defaults to saving to Desktop as '<title>.docx'.
+        photo_path: Optional path to candidate image (PNG/JPG). If provided, embeds photo directly. If omitted, generates an interactive photo slot in Word.
+        template_style: 'executive_photo' (default for resumes) or 'standard'.
     """
     count = _increment_counter()
     try:
         from docx import Document
         from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
 
         doc = Document()
         for section in doc.sections:
-            section.top_margin = Inches(0.8)
-            section.bottom_margin = Inches(0.8)
-            section.left_margin = Inches(0.8)
-            section.right_margin = Inches(0.8)
+            section.top_margin = Inches(0.6)
+            section.bottom_margin = Inches(0.6)
+            section.left_margin = Inches(0.6)
+            section.right_margin = Inches(0.6)
 
-        # Main Title Header
-        title_p = doc.add_paragraph()
-        title_p.paragraph_format.space_after = Pt(14)
-        run_t = title_p.add_run(title)
-        run_t.font.name = "Calibri"
-        run_t.font.size = Pt(18)
-        run_t.bold = True
-        run_t.font.color.rgb = RGBColor(31, 78, 121)
+        is_cv = any(k in title.lower() for k in ["cv", "resume", "curriculum", "tailored"]) or bool(photo_path)
+        raw_lines = [l.rstrip() for l in content.splitlines()]
 
-        lines = content.split("\n")
+        if is_cv and template_style == "executive_photo" and raw_lines:
+            # Parse top header metadata (Candidate Name, Subtitle, Contact)
+            header_items = []
+            body_start_idx = 0
+            for idx, line in enumerate(raw_lines[:6]):
+                l_str = line.strip()
+                if not l_str:
+                    continue
+                if l_str.startswith("## ") or l_str.startswith("### "):
+                    body_start_idx = idx
+                    break
+                clean_l = re.sub(r"^#+\s*", "", l_str).strip()
+                if not clean_l.lower().startswith("cv_"):
+                    header_items.append(clean_l)
+                body_start_idx = idx + 1
+
+            cand_name = header_items[0] if len(header_items) > 0 else title.replace("_", " ")
+            cand_contact = header_items[1] if len(header_items) > 1 else ""
+            cand_title = header_items[2] if len(header_items) > 2 else ""
+
+            # 2-Column Header Table
+            tbl = doc.add_table(rows=1, cols=2)
+            tbl.autofit = False
+            left_c = tbl.cell(0, 0)
+            right_c = tbl.cell(0, 1)
+            left_c.width = Inches(5.6)
+            right_c.width = Inches(1.5)
+
+            p_n = left_c.paragraphs[0]
+            p_n.paragraph_format.space_after = Pt(2)
+            r_n = p_n.add_run(cand_name)
+            r_n.font.name = "Calibri"
+            r_n.font.size = Pt(22)
+            r_n.bold = True
+            r_n.font.color.rgb = RGBColor(31, 78, 121)
+
+            if cand_title:
+                p_t = left_c.add_paragraph()
+                p_t.paragraph_format.space_after = Pt(3)
+                r_t = p_t.add_run(cand_title)
+                r_t.font.name = "Calibri"
+                r_t.font.size = Pt(11.5)
+                r_t.bold = True
+                r_t.font.color.rgb = RGBColor(70, 70, 70)
+
+            if cand_contact:
+                p_c = left_c.add_paragraph()
+                p_c.paragraph_format.space_after = Pt(0)
+                r_c = p_c.add_run(cand_contact)
+                r_c.font.name = "Calibri"
+                r_c.font.size = Pt(8.5)
+                r_c.font.color.rgb = RGBColor(115, 115, 115)
+
+            # Right Cell: Photo Slot
+            p_ph = right_c.paragraphs[0]
+            p_ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p_ph.paragraph_format.space_before = Pt(2)
+            p_ph.paragraph_format.space_after = Pt(2)
+
+            if photo_path and os.path.exists(photo_path):
+                r_img = p_ph.add_run()
+                r_img.add_picture(photo_path, width=Inches(1.3), height=Inches(1.3))
+            else:
+                shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F4F6F9"/>')
+                right_c._tc.get_or_add_tcPr().append(shd)
+                borders = parse_xml(f'''
+                    <w:tcBorders {nsdecls("w")}>
+                        <w:top w:val="single" w:sz="6" w:space="0" w:color="1F4E79"/>
+                        <w:left w:val="single" w:sz="6" w:space="0" w:color="1F4E79"/>
+                        <w:bottom w:val="single" w:sz="6" w:space="0" w:color="1F4E79"/>
+                        <w:right w:val="single" w:sz="6" w:space="0" w:color="1F4E79"/>
+                    </w:tcBorders>
+                ''')
+                right_c._tc.get_or_add_tcPr().append(borders)
+                r_icon = p_ph.add_run("[ Photo Slot ]\n")
+                r_icon.font.size = Pt(9.5)
+                r_icon.font.name = "Calibri"
+                r_icon.bold = True
+                r_icon.font.color.rgb = RGBColor(31, 78, 121)
+                r_lbl = p_ph.add_run("Right-Click to\nInsert Picture")
+                r_lbl.font.size = Pt(7.5)
+                r_lbl.font.name = "Calibri"
+                r_lbl.font.color.rgb = RGBColor(115, 115, 115)
+
+            p_div = doc.add_paragraph()
+            p_div.paragraph_format.space_before = Pt(6)
+            p_div.paragraph_format.space_after = Pt(10)
+            pBdr = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="12" w:space="1" w:color="1F4E79"/></w:pBdr>')
+            p_div._p.get_or_add_pPr().append(pBdr)
+
+            lines = raw_lines[body_start_idx:]
+        else:
+            title_p = doc.add_paragraph()
+            title_p.paragraph_format.space_after = Pt(14)
+            run_t = title_p.add_run(title)
+            run_t.font.name = "Calibri"
+            run_t.font.size = Pt(18)
+            run_t.bold = True
+            run_t.font.color.rgb = RGBColor(31, 78, 121)
+            lines = raw_lines
         in_code_block = False
 
         for line in lines:

@@ -323,6 +323,10 @@ TOOLS = [
                         "type": "string",
                         "description": "Optional filename (e.g. 'Fluxon_Application.docx').",
                     },
+                    "photo_path": {
+                        "type": "string",
+                        "description": "Optional local path to candidate's profile photo (e.g. 'C:/Users/lenovo/Desktop/photo.png'). If omitted, generates an interactive executive photo slot in Word.",
+                    },
                 },
                 "required": ["title", "content"],
             },

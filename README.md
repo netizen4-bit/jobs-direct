@@ -180,8 +180,8 @@ JobsDirect-MCP v2.0 exposes **16 native MCP tools** designed for end-to-end care
 * **What it does:** Complete 5-Stage end-to-end packager: pulls JD details, runs 4-Tier evaluation, generates tailored STAR resume bullets, generates 250-word cover letter, creates 10-question interview prep blueprint, and optionally performs zero-bounce SMTP enrichment for the hiring team in a single call.
 
 ### 13. `export_to_docx`
-* **Input:** `title` (str), `content` (str), `output_filename` (optional str)
-* **What it does:** Formats and exports tailored resumes, cover letters, or evaluation reports as an executive-styled Microsoft Word (`.docx`) document directly onto the user's Desktop.
+* **Input:** `title` (str), `content` (str), `output_filename` (optional str), `photo_path` (optional str)
+* **What it does:** Formats and exports tailored resumes, cover letters, or evaluation reports as an executive-styled Microsoft Word (`.docx`) document directly onto the user's Desktop. When exporting resumes, it automatically applies an Executive 2-Column Template with a styled Profile Photo slot (or auto-embeds the photo if `photo_path` is provided).
 
 ### 14. `track_application`
 * **Input:** `action` ("add", "list", "update"), `job_id`, `company`, `role`, `portal`, `status`, `notes`, `salary`
