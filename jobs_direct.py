@@ -2722,11 +2722,12 @@ def export_canva_template_cv(
                     re_run.bold = True
 
         r_sec("REFERENCES")
-        pref = r_cell.add_paragraph("Available upon request (Academic Research Advisors & Industry Executive Partners)")
-        pref.font.name = "Calibri"
-        pref.font.size = Pt(9)
-        pref.font.italic = True
-        pref.font.color.rgb = RGBColor(110, 115, 125)
+        pref = r_cell.add_paragraph()
+        r_pref = pref.add_run("Available upon request (Academic Research Advisors & Industry Executive Partners)")
+        r_pref.font.name = "Calibri"
+        r_pref.font.size = Pt(9)
+        r_pref.font.italic = True
+        r_pref.font.color.rgb = RGBColor(110, 115, 125)
 
         doc.save(docx_path)
     except Exception as e:
