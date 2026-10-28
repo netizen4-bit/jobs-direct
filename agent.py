@@ -363,6 +363,27 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "scrape_profile_or_page",
+            "description": (
+                "Scrapes any candidate profile page, portfolio website, GitHub, LinkedIn, or social media front page "
+                "using a 2-tier waterfall (fast HTTP + Playwright headless browser). Extracts readable bio, text, "
+                "emails, phones, and social links."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Full URL of the profile or page to scrape.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -392,6 +413,8 @@ async def execute_tool(name: str, args: Dict[str, Any]) -> str:
             result = await jobs_direct.osint_employer_recon(**args)
         elif name == "enrich_hiring_contacts":
             result = await jobs_direct.enrich_hiring_contacts(**args)
+        elif name == "scrape_profile_or_page":
+            result = await jobs_direct.scrape_profile_or_page(**args)
         elif name == "export_to_docx":
             result = jobs_direct.export_to_docx(**args)
         elif name == "track_application":

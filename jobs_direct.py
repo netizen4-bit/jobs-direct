@@ -400,6 +400,32 @@ def extract_social_links(html_or_text: str) -> Dict[str, List[str]]:
     return socials
 
 
+def extract_marketplace_contacts(text: str, dynamic_region: Optional[str] = None) -> Dict[str, List[str]]:
+    """Scans raw text or HTML for emails and global phone numbers (from LeadDirect)."""
+    email_pattern = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+    raw_emails = re.findall(email_pattern, text)
+    valid_emails = [
+        sanitize_email(e) for e in raw_emails
+        if not e.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.css', '.js'))
+    ]
+    valid_emails = [e for e in valid_emails if e and "@" in e]
+
+    phones = []
+    try:
+        for match in phonenumbers.PhoneNumberMatcher(text, dynamic_region):
+            formatted_num = phonenumbers.format_number(
+                match.number, phonenumbers.PhoneNumberFormat.INTERNATIONAL
+            )
+            phones.append(formatted_num)
+    except Exception:
+        pass
+
+    return {
+        "emails": sorted(list(set(valid_emails))),
+        "phones": sorted(list(set(phones)))
+    }
+
+
 def _normalize_name(name: str) -> str:
     """Lowercase, strip diacritics/accents, remove non-alphanumeric chars."""
     nfkd = unicodedata.normalize("NFKD", name)
@@ -1821,6 +1847,40 @@ async def enrich_hiring_contacts(
     phones: set[str] = set()
     social_profiles: Dict[str, List[str]] = {"linkedin": [], "instagram": [], "facebook": [], "tiktok": [], "x": []}
 
+    # Step 1: Check for Social Media / Marketplace Front Page (from LeadDirect)
+    global_marketplaces = [
+        "facebook.com", "instagram.com", "truckscout24.", "machineryzone.",
+        "agriaffaires.", "europages.", "autoline."
+    ]
+    is_marketplace = any(market in clean_domain for market in global_marketplaces)
+    if is_marketplace:
+        target_url = f"https://{clean_domain}" if not domain.startswith("http") else domain
+        page_text = ""
+        try:
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                follow_redirects=True,
+                headers={"User-Agent": DEFAULT_UA},
+            ) as client:
+                resp = await client.get(target_url)
+                page_text = resp.text
+        except Exception:
+            page_text = ""
+
+        tld = clean_domain.split('.')[-1].upper()
+        region_hint = tld if len(tld) == 2 else None
+
+        extracted_data = extract_marketplace_contacts(page_text, dynamic_region=region_hint)
+        mp_result = {
+            "domain": clean_domain,
+            "status": "marketplace_extracted",
+            "scraped_emails": extracted_data["emails"],
+            "phones": extracted_data["phones"],
+            "social_profiles": extract_social_links(page_text),
+        }
+        res_str = json.dumps(mp_result, indent=2)
+        return _maybe_append_support(res_str, count)
+
     paths = ["", "/careers", "/jobs", "/about", "/team", "/contact"]
     async with httpx.AsyncClient(
         timeout=8.0,
@@ -1934,6 +1994,95 @@ async def enrich_hiring_contacts(
     }
     result_data = _maybe_append_support(result_data, count)
     return json.dumps(result_data, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# MCP Tool: scrape_profile_or_page (Social Media & Candidate Bio Scraper)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def scrape_profile_or_page(url: str) -> str:
+    """
+    Scrapes any candidate profile page, portfolio website, GitHub, or social media front page (LinkedIn, Twitter/X, Facebook, personal site).
+    Uses a 2-tier waterfall (fast HTTP fetch -> Playwright headless browser fallback) to extract:
+    - Page Title & full readable text
+    - Contact emails (regex + Cloudflare XOR decoding + extract_marketplace_contacts)
+    - Phone numbers (international formatting via phonenumbers)
+    - Social profile links (LinkedIn, Instagram, Facebook, TikTok, X)
+
+    Args:
+        url: Full URL of the profile or web page (e.g. 'https://github.com/torvalds', 'https://linkedin.com/in/username', 'https://candidate-portfolio.dev').
+    """
+    count = _increment_counter()
+    clean_url = url.strip()
+    if not clean_url.startswith("http"):
+        clean_url = f"https://{clean_url}"
+
+    result: Dict[str, Any] = {
+        "url": clean_url,
+        "title": "",
+        "emails": [],
+        "phones": [],
+        "social_links": {"linkedin": [], "instagram": [], "facebook": [], "tiktok": [], "x": []},
+        "page_text": "",
+        "method_used": "httpx",
+        "status": "ok"
+    }
+
+    raw_html = ""
+    # Tier 1: Fast HTTP pass with realistic browser headers
+    try:
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=True,
+            headers={"User-Agent": DEFAULT_UA}
+        ) as client:
+            resp = await client.get(clean_url)
+            if resp.status_code == 200:
+                raw_html = resp.text
+    except Exception:
+        pass
+
+    # Tier 2: Playwright fallback if raw_html is sparse, empty, or for dynamic social pages
+    if not raw_html or len(raw_html) < 600 or any(d in clean_url for d in ["linkedin.com", "instagram.com", "facebook.com", "twitter.com", "x.com"]):
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page(user_agent=DEFAULT_UA)
+                await page.goto(clean_url, timeout=12000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+                raw_html = await page.content()
+                result["title"] = await page.title()
+                result["page_text"] = await page.evaluate("document.body.innerText")
+                result["method_used"] = "playwright"
+                await browser.close()
+        except Exception:
+            pass
+
+    # Extract structured contact and social data
+    if raw_html:
+        soup = BeautifulSoup(raw_html, "html.parser")
+        if not result["title"] and soup.title:
+            result["title"] = soup.title.string or ""
+
+        if not result["page_text"]:
+            for tag in soup(["script", "style", "nav", "footer"]):
+                tag.decompose()
+            result["page_text"] = clean_text(soup.get_text(" ", strip=True))[:6000]
+
+        mp_contacts = extract_marketplace_contacts(raw_html)
+        cf_emails = extract_cf_emails(raw_html)
+        all_emails = sorted(list(set(mp_contacts["emails"] + cf_emails)))
+        result["emails"] = all_emails
+        result["phones"] = mp_contacts["phones"]
+        result["social_links"] = extract_social_links(raw_html)
+    else:
+        result["status"] = "failed_to_retrieve"
+        result["error"] = "Unable to scrape URL; site blocked unauthenticated crawlers or returned no content."
+
+    res_json = json.dumps(result, indent=2)
+    return _maybe_append_support(res_json, count)
 
 
 # ---------------------------------------------------------------------------
