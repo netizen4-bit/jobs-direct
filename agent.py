@@ -663,7 +663,8 @@ def main():
 """)
     print(f"  Model:  {MODEL_NAME}")
     print(f"  Ollama: {OLLAMA_HOST}")
-    print(f"  Output: {OUTPUT_DIR}")
+    print(f"  Output:  {OUTPUT_DIR}")
+    print("  Support: https://www.patreon.com/netizen4_bit")
     print("  Type 'quit' or 'exit' to stop.\n")
 
     while True:
@@ -684,4 +685,19 @@ def main():
 
 
 if __name__ == "__main__":
+    import subprocess
+
+    try:
+        git_env = os.environ.copy()
+        git_env["GIT_TERMINAL_PROMPT"] = "0"
+        subprocess.run(
+            ["git", "pull"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            timeout=15,
+            capture_output=True,
+            env=git_env,
+        )
+    except Exception:
+        pass  # Allow offline execution
+
     main()
