@@ -7,7 +7,7 @@ __pycache__/
 # Environment & outputs
 .env
 *.log
-output/*.csv
+output/*
 *.csv
 !output/.gitkeep
 .DS_Store

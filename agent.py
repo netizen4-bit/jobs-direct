@@ -471,6 +471,40 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_search_results_folder",
+            "description": (
+                "Saves and archives job search results, ranked matches, candidate profile analysis, "
+                "and formatted reports by creating dedicated output folders on the Desktop and in the repository. "
+                "Outputs job_matches.csv, job_matches_report.md, job_matches_report.docx, candidate_profile.json, "
+                "and search_parameters.json."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "Candidate full name or identifier (e.g. 'Nihat_Kasim').",
+                    },
+                    "ranked_jobs_json": {
+                        "type": "string",
+                        "description": "JSON string of list of ranked job objects.",
+                    },
+                    "candidate_snapshot_json": {
+                        "type": "string",
+                        "description": "Optional JSON string of candidate profile metadata.",
+                    },
+                    "report_markdown": {
+                        "type": "string",
+                        "description": "Optional custom markdown report content.",
+                    },
+                },
+                "required": ["candidate_name", "ranked_jobs_json"],
+            },
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -482,7 +516,9 @@ async def execute_tool(name: str, args: Dict[str, Any]) -> str:
     print(f"      Args: {json.dumps(args, ensure_ascii=False)[:180]}")
 
     try:
-        if name == "find_jobs_from_profile":
+        if name == "save_search_results_folder":
+            result = jobs_direct.save_search_results_folder(**args)
+        elif name == "find_jobs_from_profile":
             result = await jobs_direct.find_jobs_from_profile(**args)
         elif name == "prepare_job_application":
             result = await jobs_direct.prepare_job_application(**args)

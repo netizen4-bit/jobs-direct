@@ -2131,6 +2131,192 @@ async def scrape_profile_or_page(url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+
+def save_job_operations_folder(
+    candidate_name: str,
+    candidate_snapshot: Dict[str, Any],
+    search_parameters: Dict[str, Any],
+    ranked_jobs: List[Dict[str, Any]],
+    custom_report_markdown: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Persistently archives all job search operations, candidate snapshots, and matched openings
+    by creating organized folders both in repository 'output/' and on the user's 'Desktop'.
+
+    Saves:
+    - job_matches.csv: Structured CSV table of all matching jobs.
+    - job_matches_report.md: Formatted markdown report.
+    - job_matches_report.docx: Professional Word document for offline reading.
+    - candidate_profile.json: Extracted candidate skills and domain taxonomy.
+    - search_parameters.json: Complete query parameters and screening log.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = re.sub(r"[^\w-]", "_", candidate_name).strip("_") or "Candidate"
+    folder_name = f"Job_Matches_{safe_name}_{timestamp}"
+
+    # 1. Output directory inside repo
+    repo_dir = os.path.join(OUTPUT_DIR, folder_name)
+    os.makedirs(repo_dir, exist_ok=True)
+
+    # 2. Desktop directory for immediate user access
+    desktop_base = os.path.join(os.path.expanduser("~"), "Desktop", "Job_Search_Results")
+    desktop_dir = os.path.join(desktop_base, f"{safe_name}_{datetime.now().strftime('%Y%m%d')}")
+    os.makedirs(desktop_dir, exist_ok=True)
+
+    target_dirs = [repo_dir, desktop_dir]
+
+    # Generate Report Markdown
+    if custom_report_markdown:
+        md_content = custom_report_markdown
+    else:
+        md_lines = [
+            f"# Job Matching Report: {safe_name.replace('_', ' ')}",
+            "",
+            f"> Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"> Detected Role: **{candidate_snapshot.get('detected_role', 'N/A')}** | Domain: **{candidate_snapshot.get('primary_industry_domain', 'N/A')}**",
+            f"> Skills: {', '.join(candidate_snapshot.get('detected_skills', []))}",
+            "",
+            "---",
+            "",
+            "## 🏆 Top Matched Opportunities",
+            "",
+            "| Company | Role | Fit Score | Verdict | Domain Ratio | Location | Apply URL |",
+            "| :--- | :--- | :---: | :--- | :---: | :--- | :--- |",
+        ]
+        for j in ranked_jobs:
+            c = j.get("company", "N/A")
+            r = j.get("job_title", "N/A")
+            s = j.get("total_fit_score", 0)
+            v = j.get("verdict", "N/A")
+            dm = j.get("domain_match", "N/A")
+            loc = j.get("location", "N/A")
+            u = j.get("url", "#")
+            md_lines.append(f"| **{c}** | {r} | **{s} / 100** | `{v}` | {dm} | {loc} | [Apply Here]({u}) |")
+
+        md_lines.extend([
+            "",
+            "---",
+            "## 📌 Recommended Next Steps",
+            "1. Run `tailor_resume` and `generate_cover_letter` for the top matches.",
+            "2. Run `enrich_hiring_contacts` to get verified hiring manager emails.",
+            "3. Track your submissions via `track_application`."
+        ])
+        md_content = "\n".join(md_lines)
+
+    # 1. Save CSV
+    csv_headers = ["Company", "Job_Title", "Fit_Score", "Verdict", "Domain_Match", "Matched_Skills", "Location", "Portal", "Apply_URL"]
+    for d in target_dirs:
+        csv_file = os.path.join(d, "job_matches.csv")
+        with open(csv_file, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            for banner_row in CSV_SUPPORT_BANNER:
+                writer.writerow(banner_row)
+            writer.writerow(csv_headers)
+            for j in ranked_jobs:
+                writer.writerow([
+                    j.get("company", ""),
+                    j.get("job_title", ""),
+                    j.get("total_fit_score", ""),
+                    j.get("verdict", ""),
+                    j.get("domain_match", ""),
+                    "; ".join(j.get("matched_skills", [])) if isinstance(j.get("matched_skills"), list) else j.get("matched_skills", ""),
+                    j.get("location", ""),
+                    j.get("portal", ""),
+                    j.get("url", "")
+                ])
+
+    # 2. Save Markdown
+    for d in target_dirs:
+        md_file = os.path.join(d, "job_matches_report.md")
+        with open(md_file, "w", encoding="utf-8") as f:
+            f.write(md_content)
+
+    # 3. Save JSON metadata
+    for d in target_dirs:
+        with open(os.path.join(d, "candidate_profile.json"), "w", encoding="utf-8") as f:
+            json.dump(candidate_snapshot, f, indent=2, ensure_ascii=False)
+        with open(os.path.join(d, "search_parameters.json"), "w", encoding="utf-8") as f:
+            json.dump(search_parameters, f, indent=2, ensure_ascii=False)
+
+    # 4. Save DOCX if python-docx is available
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        doc = Document()
+        title_p = doc.add_paragraph()
+        run_t = title_p.add_run(f"Job Matching Report: {safe_name.replace('_', ' ')}")
+        run_t.font.name = "Calibri"
+        run_t.font.size = Pt(18)
+        run_t.bold = True
+        run_t.font.color.rgb = RGBColor(31, 78, 121)
+
+        for line in md_content.splitlines():
+            line_str = line.strip()
+            if not line_str or line_str.startswith("#"):
+                continue
+            p = doc.add_paragraph(line_str)
+            p.paragraph_format.space_after = Pt(4)
+
+        for d in target_dirs:
+            doc.save(os.path.join(d, "job_matches_report.docx"))
+    except Exception:
+        pass
+
+    return {
+        "repository_folder": repo_dir,
+        "desktop_folder": desktop_dir
+    }
+
+
+@mcp.tool()
+def save_search_results_folder(
+    candidate_name: str,
+    ranked_jobs_json: str,
+    candidate_snapshot_json: Optional[str] = None,
+    report_markdown: Optional[str] = None,
+) -> str:
+    """
+    Saves and archives job search results, ranked matches, candidate profile analysis,
+    and formatted reports by creating dedicated output folders on the Desktop and in the repository.
+
+    Creates:
+    - job_matches.csv
+    - job_matches_report.md
+    - job_matches_report.docx
+    - candidate_profile.json
+    - search_parameters.json
+
+    Args:
+        candidate_name: Candidate full name or identifier (e.g. 'Nihat_Kasim').
+        ranked_jobs_json: JSON string of list of ranked job objects.
+        candidate_snapshot_json: Optional JSON string of candidate profile metadata.
+        report_markdown: Optional custom markdown report content.
+    """
+    count = _increment_counter()
+    try:
+        ranked_jobs = json.loads(ranked_jobs_json) if isinstance(ranked_jobs_json, str) else ranked_jobs_json
+    except Exception:
+        ranked_jobs = []
+    try:
+        candidate_snapshot = json.loads(candidate_snapshot_json) if candidate_snapshot_json else {}
+    except Exception:
+        candidate_snapshot = {}
+
+    saved_paths = save_job_operations_folder(
+        candidate_name=candidate_name,
+        candidate_snapshot=candidate_snapshot,
+        search_parameters={"timestamp": datetime.now().isoformat()},
+        ranked_jobs=ranked_jobs,
+        custom_report_markdown=report_markdown
+    )
+    res = json.dumps({
+        "status": "success",
+        "message": f"Successfully created results folder and saved operations for '{candidate_name}'.",
+        "saved_folders": saved_paths
+    }, indent=2)
+    return _maybe_append_support(res, count)
+
+
 # MCP Tool: find_jobs_from_profile (End-to-End Profile-to-Job Matcher)
 # ---------------------------------------------------------------------------
 
@@ -2273,6 +2459,27 @@ async def find_jobs_from_profile(
             "3. Run enrich_hiring_contacts with the company domain for direct double-tap outreach."
         ]
     }
+
+    # 5. Automatically create operations folder and persist files to Desktop & output/
+    candidate_name = "Candidate"
+    if profile_data.get("title"):
+        clean_name = re.sub(r"\s*[-|].*", "", profile_data["title"]).strip()
+        clean_name = re.sub(r"[^\w\s-]", "", clean_name).strip()
+        clean_name = re.sub(r"[\s-]+", "_", clean_name)
+        if clean_name and clean_name.lower() not in ["sign_up", "sign_in", "linkedin", "profile"]:
+            candidate_name = clean_name
+    elif "linkedin.com/in/" in profile_url:
+        u_match = re.search(r"linkedin\.com/in/([^/?#]+)", profile_url)
+        if u_match:
+            candidate_name = re.sub(r"[^\w]", "_", u_match.group(1))
+
+    saved_dirs = save_job_operations_folder(
+        candidate_name=candidate_name,
+        candidate_snapshot=result_package["candidate_snapshot"],
+        search_parameters=result_package["search_parameters"],
+        ranked_jobs=evaluated_jobs[:limit],
+    )
+    result_package["saved_operations_folders"] = saved_dirs
 
     res_str = json.dumps(result_package, indent=2)
     return _maybe_append_support(res_str, count)

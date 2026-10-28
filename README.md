@@ -112,7 +112,7 @@ jobs-direct/
 │   └── osint-hiring-bypass/
 │       └── SKILL.md             # Double-tap outreach: direct-ATS dorking, crt.sh enum & zero-bounce SMTP
 ├── output/                      # Auto-created portable directory for verified hiring contacts CSV
-├── jobs_direct.py               # FastMCP Server exposing 15 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching)
+├── jobs_direct.py               # FastMCP Server exposing 16 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching, Disk Persistence)
 ├── agent.py                     # Autonomous interactive agent runner for local LLMs (Ollama / Qwen)
 ├── requirements.txt             # Core Python dependencies
 ├── CODE_OF_CONDUCT.md           # Community guidelines
@@ -124,13 +124,13 @@ jobs-direct/
 
 ---
 
-## 🛠️ MCP Tools Reference (Full 15-Tool Suite)
+## 🛠️ MCP Tools Reference (Full 16-Tool Suite)
 
-JobsDirect-MCP v2.0 exposes **15 native MCP tools** designed for end-to-end career intelligence and automated job matching:
+JobsDirect-MCP v2.0 exposes **16 native MCP tools** designed for end-to-end career intelligence and automated job matching:
 
 ### 🚀 1. `find_jobs_from_profile` *(Automated Profile-to-Job Matching Engine)*
 * **Input:** `profile_url` (str, e.g. LinkedIn, GitHub, or portfolio URL), `location` (str, default "Remote"), `portal` (str, default "all"), `limit` (int, default 10)
-* **What it does:** The ultimate one-click career automation tool. Takes a candidate's profile URL, automatically scrapes and extracts their career footprint and domain via our cookieless 2-tier waterfall + DDGS public snippet engine, queries direct enterprise ATS boards & aggregators, executes deterministic 4-Tier ATS scoring on all found opportunities, and outputs a ranked leaderboard of matched positions with direct application URLs.
+* **What it does:** The ultimate one-click career automation tool. Takes a candidate's profile URL, automatically scrapes and extracts their career footprint and domain via our cookieless 2-tier waterfall + DDGS public snippet engine, queries direct enterprise ATS boards & aggregators, executes deterministic 4-Tier ATS scoring on all found opportunities, and outputs a ranked leaderboard of matched positions with direct application URLs, while **automatically creating a dedicated results folder** (on Desktop and in `output/`) containing `job_matches.csv`, `job_matches_report.md`, `job_matches_report.docx`, and JSON snapshots.
 
 ### 🌐 2. `scrape_profile_or_page` *(Cookieless Web & Social Scraper)*
 * **Input:** `url` (str)
@@ -191,6 +191,10 @@ JobsDirect-MCP v2.0 exposes **15 native MCP tools** designed for end-to-end care
 * **Input:** `role` (str), `location` (optional str)
 * **What it does:** Provides instant market compensation benchmark ranges across Junior, Mid, and Senior tiers for role negotiations (USD and local TRY currencies).
 
+### 📁 16. `save_search_results_folder` *(Automated Operations & Disk Archiver)*
+* **Input:** `candidate_name` (str), `ranked_jobs_json` (str), `candidate_snapshot_json` (optional str), `report_markdown` (optional str)
+* **What it does:** Organizes and permanently archives job matching results and operations by creating structured folders in both `output/` and directly on the user's `Desktop/Job_Search_Results/<candidate_name>_<date>/`. Generates `job_matches.csv`, executive `.docx` report, markdown summary, and metadata JSON files in one step.
+
 ---
 
 ## 📦 Prerequisites & Quick Setup
@@ -221,7 +225,7 @@ Install and configure the JobsDirect MCP server into my Antigravity setup:
    - Args: Full absolute path to `jobs_direct.py` (ensure Windows backslashes are escaped)
    - Environment variables: Set `JOBSDIRECT_CONTACTS_OUTPUT` to the absolute path of `output/hiring_contacts_output.csv` inside the repo.
 4. Copy the bundled agent skills (`skills/hybrid-ats-positioning` and `skills/osint-hiring-bypass`) into `~/.gemini/config/skills/`.
-5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 15 MCP tools are registered.
+5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 16 MCP tools are registered.
 ````
 
 ---
