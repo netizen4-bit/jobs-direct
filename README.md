@@ -111,7 +111,12 @@ jobs-direct/
 │   │   └── SKILL.md             # 4-Tier decision gate & Harish Kumar 5-stage truthful positioning protocol
 │   └── osint-hiring-bypass/
 │       └── SKILL.md             # Double-tap outreach: direct-ATS dorking, crt.sh enum & zero-bounce SMTP
-├── output/                      # Auto-created portable directory for verified hiring contacts CSV
+├── output/                      # Auto-created portable directory for verified hiring contacts & match archives
+│   └── Job_Matches_<Candidate>_<Date>/
+│       ├── job_matches.xlsx     # Executive styled Excel workbook (UI match badges, hyperlinks, auto-fit)
+│       ├── job_matches.csv      # RFC 4180 UTF-8 BOM CSV (native Windows Excel character support)
+│       ├── Cover_Letters/       # Dedicated subfolder for tailored cover letters
+│       └── Tailored_CVs/        # Dedicated subfolder for tailored resumes & Word/HTML exports
 ├── jobs_direct.py               # FastMCP Server exposing 17 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching, Canva Template Engine)
 ├── agent.py                     # Autonomous interactive agent runner for local LLMs (Ollama / Qwen)
 ├── requirements.txt             # Core Python dependencies
@@ -130,7 +135,7 @@ JobsDirect-MCP v2.0 exposes **17 native MCP tools** designed for end-to-end care
 
 ### 🚀 1. `find_jobs_from_profile` *(Automated Profile-to-Job Matching Engine)*
 * **Input:** `profile_url` (str, e.g. LinkedIn, GitHub, or portfolio URL), `location` (str, default "Remote"), `portal` (str, default "all"), `limit` (int, default 10)
-* **What it does:** The ultimate one-click career automation tool. Takes a candidate's profile URL, automatically scrapes and extracts their career footprint and domain via our cookieless 2-tier waterfall + DDGS public snippet engine, queries direct enterprise ATS boards & aggregators, executes deterministic 4-Tier ATS scoring on all found opportunities, and outputs a ranked leaderboard of matched positions with direct application URLs, while **automatically creating a dedicated results folder** (on Desktop and in `output/`) containing `job_matches.csv`, `job_matches_report.md`, `job_matches_report.docx`, and JSON snapshots.
+* **What it does:** The ultimate one-click career automation tool. Takes a candidate's profile URL, automatically scrapes and extracts their career footprint and domain via our cookieless 2-tier waterfall + DDGS public snippet engine, queries direct enterprise ATS boards & aggregators, executes deterministic 4-Tier ATS scoring on all found opportunities, and outputs a ranked leaderboard of matched positions with direct application URLs, while **automatically creating a dedicated results folder** (on Desktop and in `output/`) containing `job_matches.xlsx` (an executive, styled Excel workbook matching Antigravity Generative UI with colored verdict badges, technology word wrap, and clickable hyperlinks), `job_matches.csv` (RFC-compliant UTF-8-SIG), `job_matches_report.md`, `job_matches_report.docx`, JSON snapshots, and dedicated `Cover_Letters/` & `Tailored_CVs/` subdirectories.
 
 ### 🌐 2. `scrape_profile_or_page` *(Cookieless Web & Social Scraper)*
 * **Input:** `url` (str)

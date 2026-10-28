@@ -327,6 +327,10 @@ TOOLS = [
                         "type": "string",
                         "description": "Optional local path to candidate's profile photo (e.g. 'C:/Users/lenovo/Desktop/photo.png'). If omitted, generates an interactive executive photo slot in Word.",
                     },
+                    "folder_path": {
+                        "type": "string",
+                        "description": "Optional destination folder. If omitted, automatically saves into the organized Job_Search_Results subfolder (Cover_Letters/ or Tailored_CVs/).",
+                    },
                 },
                 "required": ["title", "content"],
             },
@@ -551,6 +555,10 @@ TOOLS = [
                         "type": "string",
                         "description": "Optional path to candidate's photo. If omitted, leaves an interactive photo slot in Word and HTML.",
                     },
+                    "folder_path": {
+                        "type": "string",
+                        "description": "Optional destination folder. If omitted, automatically saves into Job_Search_Results/Tailored_CVs/.",
+                    },
                 },
                 "required": ["candidate_name", "target_role"],
             },
@@ -635,7 +643,7 @@ SYSTEM_PROMPT = (
     "2. If verdict is CLOSED_OR_EXPIRED or REJECTED (Language Gate Restriction), STOP immediately and notify the user.\n"
     "3. Never invent candidate experience, metrics, or credentials. Always remain 100% truthful to the candidate's CV.\n"
     "4. When tailoring, use the candidate's real quantified numbers in STAR bullets and use Honest Bridges for secondary gaps.\n"
-    "5. Use `export_to_docx` to save professional Word copies on Desktop when requested.\n"
+    "5. Use `export_to_docx` or `export_canva_template_cv` to save professional materials. All outputs are automatically organized into subfolders (Cover_Letters/ and Tailored_CVs/) within Desktop/Job_Search_Results/<Candidate>_<Date>/ keeping the desktop clean.\n"
 )
 
 # ---------------------------------------------------------------------------
