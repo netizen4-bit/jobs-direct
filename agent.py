@@ -509,6 +509,53 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_canva_template_cv",
+            "description": (
+                "Exports a tailored CV matching the exact Modern Minimalist Canva layout "
+                "(same design, structure, slate header, and 2-column layout as https://agriculturalmachineryturkey.my.canva.site/). "
+                "Saves both an executive Word (.docx) file with right-click photo slot, and an interactive print-ready HTML/CSS file."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "candidate_name": {
+                        "type": "string",
+                        "description": "Full candidate name.",
+                    },
+                    "target_role": {
+                        "type": "string",
+                        "description": "Target job title / subtitle.",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Tailored executive summary paragraph.",
+                    },
+                    "experience_markdown": {
+                        "type": "string",
+                        "description": "Experience text with companies, titles, dates, and STAR bullets.",
+                    },
+                    "skills_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of core skills / competencies.",
+                    },
+                    "education_list": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of degrees and certifications.",
+                    },
+                    "photo_path": {
+                        "type": "string",
+                        "description": "Optional path to candidate's photo. If omitted, leaves an interactive photo slot in Word and HTML.",
+                    },
+                },
+                "required": ["candidate_name", "target_role"],
+            },
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -520,7 +567,9 @@ async def execute_tool(name: str, args: Dict[str, Any]) -> str:
     print(f"      Args: {json.dumps(args, ensure_ascii=False)[:180]}")
 
     try:
-        if name == "save_search_results_folder":
+        if name == "export_canva_template_cv":
+            result = jobs_direct.export_canva_template_cv(**args)
+        elif name == "save_search_results_folder":
             result = jobs_direct.save_search_results_folder(**args)
         elif name == "find_jobs_from_profile":
             result = await jobs_direct.find_jobs_from_profile(**args)

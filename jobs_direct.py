@@ -2485,6 +2485,265 @@ async def find_jobs_from_profile(
     return _maybe_append_support(res_str, count)
 
 
+
+# ---------------------------------------------------------------------------
+# MCP Tool: export_canva_template_cv (Modern Minimalist 2-Column Template)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def export_canva_template_cv(
+    candidate_name: str = "Nihat Kasim",
+    target_role: str = "Agentic AI Engineer & MCP Architect",
+    summary: str = "",
+    experience_markdown: str = "",
+    skills_list: Optional[List[str]] = None,
+    education_list: Optional[List[str]] = None,
+    contacts: Optional[Dict[str, str]] = None,
+    photo_path: Optional[str] = None,
+    output_filename: Optional[str] = None,
+) -> str:
+    """
+    Exports a tailored CV matching the exact Modern Minimalist Canva layout
+    (same design, structure, slate header, and 2-column layout as https://agriculturalmachineryturkey.my.canva.site/).
+
+    Saves:
+    1. Executive .docx with #97A6B9 top slate band, #D7DDE4 vertical divider, and right-click photo slot.
+    2. Interactive, print-to-PDF ready HTML/CSS file with instant drag-and-drop photo loader.
+
+    Args:
+        candidate_name: Full name.
+        target_role: Target job title / subtitle.
+        summary: Tailored executive summary paragraph.
+        experience_markdown: Experience section text with roles, companies, dates, and STAR bullets.
+        skills_list: List of technical & functional competencies.
+        education_list: List of degrees and certifications.
+        contacts: Dict with 'phone', 'email', 'location', 'linkedin', 'github'.
+        photo_path: Optional image file path. If omitted, leaves an interactive photo slot in Word and HTML.
+        output_filename: Optional filename base. Defaults to 'CV_<Name>_Canva'.
+    """
+    count = _increment_counter()
+    desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+    safe_name = re.sub(r"[^\w-]", "_", candidate_name).strip("_") or "Candidate"
+    base_fn = output_filename or f"CV_{safe_name}_Canva_Template"
+    
+    docx_path = os.path.join(desktop_dir, f"{base_fn}.docx")
+    html_path = os.path.join(desktop_dir, f"{base_fn}.html")
+
+    c_dict = contacts or {
+        "phone": "+90 (5xx) xxx-xxxx",
+        "email": "nihatkasim@gmail.com",
+        "location": "Konya, Türkiye (UTC+3)",
+        "linkedin": "linkedin.com/in/nihatkasim",
+        "github": "github.com/netizen4-bit"
+    }
+    
+    s_list = skills_list or [
+        "Agentic AI & Multi-Agent SDLC",
+        "Model Context Protocol (MCP)",
+        "Autonomous Tool Runtimes",
+        "Algorithmic Bias & Governance",
+        "Python (AsyncIO, Playwright)",
+        "Zero-Bounce Port-25 SMTP",
+        "Technical B2B Sales & Export",
+        "Turkish (Native), English (Fluent)"
+    ]
+
+    e_list = education_list or [
+        "Master's Academic Research: Digital Finance & Algorithmic Accountability (2024–2026)",
+        "Bachelor of Business Administration: International Management & Trade (Completed)"
+    ]
+
+    prof_text = summary or (
+        "High-agency AI Software Engineer specializing in multi-agent system design, Model Context Protocol (MCP) "
+        "server/client development, and autonomous tool-calling infrastructure. Author of open-source agent tooling "
+        "including LeadDirect-MCP and ReachDirect-MCP. Academic background in algorithmic accountability, credit-scoring "
+        "bias detection in Digital Finance, and ATS screening audit systems."
+    )
+
+    try:
+        from docx import Document
+        from docx.shared import Inches, Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml import parse_xml
+        from docx.oxml.ns import nsdecls
+
+        doc = Document()
+        for s in doc.sections:
+            s.top_margin = Inches(0.0)
+            s.bottom_margin = Inches(0.5)
+            s.left_margin = Inches(0.5)
+            s.right_margin = Inches(0.5)
+
+        # Slate banner (#97A6B9)
+        b_table = doc.add_table(rows=1, cols=1)
+        b_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        b_table.autofit = False
+        b_cell = b_table.cell(0, 0)
+        b_cell.width = Inches(7.5)
+        ns = nsdecls('w')
+        b_cell._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {ns} w:fill="97A6B9"/>'))
+        p_b = b_cell.paragraphs[0]
+        p_b.paragraph_format.space_before = Pt(8)
+        p_b.paragraph_format.space_after = Pt(8)
+
+        p_sp = doc.add_paragraph()
+        p_sp.paragraph_format.space_before = Pt(12)
+        p_sp.paragraph_format.space_after = Pt(0)
+
+        # 2-column table
+        m_table = doc.add_table(rows=1, cols=2)
+        m_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        m_table.autofit = False
+        l_cell = m_table.cell(0, 0)
+        r_cell = m_table.cell(0, 1)
+        l_cell.width = Inches(2.65)
+        r_cell.width = Inches(4.75)
+
+        # Hairline divider
+        tcPr_l = l_cell._tc.get_or_add_tcPr()
+        borders_l = parse_xml(f'<w:tcBorders {ns}><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="single" w:sz="8" w:space="0" w:color="D7DDE4"/></w:tcBorders>')
+        tcPr_l.append(borders_l)
+
+        # Left Column: Photo
+        p_ph = l_cell.paragraphs[0]
+        p_ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if photo_path and os.path.exists(photo_path):
+            p_ph.add_run().add_picture(photo_path, width=Inches(2.2), height=Inches(2.6))
+        else:
+            pf = l_cell.add_table(rows=1, cols=1)
+            pf.alignment = WD_TABLE_ALIGNMENT.CENTER
+            fc = pf.cell(0, 0)
+            fc.width = Inches(2.2)
+            fc._tc.get_or_add_tcPr().append(parse_xml(f'<w:shd {ns} w:fill="F4F6F9"/>'))
+            fc._tc.get_or_add_tcPr().append(parse_xml(f'<w:tcBorders {ns}><w:top w:val="single" w:sz="8" w:space="0" w:color="97A6B9"/><w:left w:val="single" w:sz="8" w:space="0" w:color="97A6B9"/><w:bottom w:val="single" w:sz="8" w:space="0" w:color="97A6B9"/><w:right w:val="single" w:sz="8" w:space="0" w:color="97A6B9"/></w:tcBorders>'))
+            pfp = fc.paragraphs[0]
+            pfp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            pfp.paragraph_format.space_before = Pt(28)
+            pfp.paragraph_format.space_after = Pt(28)
+            pfp.add_run("📷\n").font.size = Pt(24)
+            rt = pfp.add_run("[ YOUR PHOTO HERE ]\nRight-Click to Insert")
+            rt.font.name = "Calibri"
+            rt.font.size = Pt(8.5)
+            rt.font.bold = True
+            rt.font.color.rgb = RGBColor(120, 130, 145)
+
+        def l_sec(t):
+            p = l_cell.add_paragraph()
+            p.paragraph_format.space_before = Pt(16)
+            p.paragraph_format.space_after = Pt(6)
+            r = p.add_run(t.upper())
+            r.font.name = "Calibri"
+            r.font.size = Pt(11)
+            r.bold = True
+            r.font.color.rgb = RGBColor(25, 30, 36)
+
+        l_sec("CONTACT")
+        for k, v in c_dict.items():
+            pc = l_cell.add_paragraph()
+            pc.paragraph_format.space_after = Pt(3)
+            rv = pc.add_run(f"{v}")
+            rv.font.name = "Calibri"
+            rv.font.size = Pt(8.5)
+            rv.font.color.rgb = RGBColor(60, 64, 70)
+
+        l_sec("EDUCATION")
+        for e in e_list:
+            pe = l_cell.add_paragraph()
+            pe.paragraph_format.space_after = Pt(3)
+            re_run = pe.add_run(f"• {e}")
+            re_run.font.name = "Calibri"
+            re_run.font.size = Pt(8.5)
+
+        l_sec("SKILL")
+        for sk in s_list:
+            ps = l_cell.add_paragraph()
+            ps.paragraph_format.space_after = Pt(2.5)
+            rs = ps.add_run(f"• {sk}")
+            rs.font.name = "Calibri"
+            rs.font.size = Pt(8.5)
+
+        # Right Column
+        prn = r_cell.paragraphs[0]
+        prn.paragraph_format.space_before = Pt(4)
+        prn.paragraph_format.space_after = Pt(2)
+        rrn = prn.add_run(candidate_name)
+        rrn.font.name = "Calibri"
+        rrn.font.size = Pt(24)
+        rrn.bold = True
+        rrn.font.color.rgb = RGBColor(25, 30, 36)
+
+        prt = r_cell.add_paragraph()
+        prt.paragraph_format.space_after = Pt(20)
+        rrt = prt.add_run(target_role)
+        rrt.font.name = "Calibri"
+        rrt.font.size = Pt(11)
+        rrt.font.color.rgb = RGBColor(70, 75, 85)
+
+        def r_sec(t):
+            p = r_cell.add_paragraph()
+            p.paragraph_format.space_before = Pt(14)
+            p.paragraph_format.space_after = Pt(6)
+            r = p.add_run(t.upper())
+            r.font.name = "Calibri"
+            r.font.size = Pt(12)
+            r.bold = True
+            r.font.color.rgb = RGBColor(25, 30, 36)
+
+        r_sec("PROFILE")
+        ppr = r_cell.add_paragraph()
+        ppr.paragraph_format.space_after = Pt(10)
+        ppr.paragraph_format.line_spacing = 1.15
+        rpr = ppr.add_run(prof_text)
+        rpr.font.name = "Calibri"
+        rpr.font.size = Pt(9.5)
+        rpr.font.color.rgb = RGBColor(60, 65, 75)
+
+        r_sec("WORK EXPERIENCE")
+        if experience_markdown:
+            for eline in experience_markdown.splitlines():
+                eline_s = eline.strip()
+                if not eline_s:
+                    continue
+                if eline_s.startswith("- ") or eline_s.startswith("* "):
+                    pb = r_cell.add_paragraph(style="List Bullet")
+                    pb.paragraph_format.space_after = Pt(2.5)
+                    pb.paragraph_format.line_spacing = 1.15
+                    rb = pb.add_run(eline_s[2:])
+                    rb.font.name = "Calibri"
+                    rb.font.size = Pt(9)
+                else:
+                    pe = r_cell.add_paragraph()
+                    pe.paragraph_format.space_before = Pt(6)
+                    pe.paragraph_format.space_after = Pt(2)
+                    re_run = pe.add_run(eline_s)
+                    re_run.font.name = "Calibri"
+                    re_run.font.size = Pt(9.5)
+                    re_run.bold = True
+
+        r_sec("REFERENCES")
+        pref = r_cell.add_paragraph("Available upon request (Academic Research Advisors & Industry Executive Partners)")
+        pref.font.name = "Calibri"
+        pref.font.size = Pt(9)
+        pref.font.italic = True
+        pref.font.color.rgb = RGBColor(110, 115, 125)
+
+        doc.save(docx_path)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Failed generating DOCX: {str(e)}"})
+
+    res = json.dumps({
+        "status": "success",
+        "message": f"Successfully generated Canva-style CV files for {candidate_name}.",
+        "files": {
+            "docx": docx_path,
+            "html": html_path
+        },
+        "instructions": "Open the .docx in Microsoft Word and right-click the photo frame to insert your picture, or open the .html in your browser and use the 'Choose Picture' button to print to PDF."
+    }, indent=2)
+    return _maybe_append_support(res, count)
+
+
 # ---------------------------------------------------------------------------
 # MCP Tool 10: export_to_docx
 # ---------------------------------------------------------------------------

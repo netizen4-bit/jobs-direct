@@ -112,7 +112,7 @@ jobs-direct/
 │   └── osint-hiring-bypass/
 │       └── SKILL.md             # Double-tap outreach: direct-ATS dorking, crt.sh enum & zero-bounce SMTP
 ├── output/                      # Auto-created portable directory for verified hiring contacts CSV
-├── jobs_direct.py               # FastMCP Server exposing 16 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching, Disk Persistence)
+├── jobs_direct.py               # FastMCP Server exposing 17 core tools (Search, Fit, Tailor, OSINT, SMTP, Profile Matching, Canva Template Engine)
 ├── agent.py                     # Autonomous interactive agent runner for local LLMs (Ollama / Qwen)
 ├── requirements.txt             # Core Python dependencies
 ├── CODE_OF_CONDUCT.md           # Community guidelines
@@ -124,9 +124,9 @@ jobs-direct/
 
 ---
 
-## 🛠️ MCP Tools Reference (Full 16-Tool Suite)
+## 🛠️ MCP Tools Reference (Full 17-Tool Suite)
 
-JobsDirect-MCP v2.0 exposes **16 native MCP tools** designed for end-to-end career intelligence and automated job matching:
+JobsDirect-MCP v2.0 exposes **17 native MCP tools** designed for end-to-end career intelligence and automated job matching:
 
 ### 🚀 1. `find_jobs_from_profile` *(Automated Profile-to-Job Matching Engine)*
 * **Input:** `profile_url` (str, e.g. LinkedIn, GitHub, or portfolio URL), `location` (str, default "Remote"), `portal` (str, default "all"), `limit` (int, default 10)
@@ -195,6 +195,10 @@ JobsDirect-MCP v2.0 exposes **16 native MCP tools** designed for end-to-end care
 * **Input:** `candidate_name` (str), `ranked_jobs_json` (str), `candidate_snapshot_json` (optional str), `report_markdown` (optional str)
 * **What it does:** Organizes and permanently archives job matching results and operations by creating structured folders in both `output/` and directly on the user's `Desktop/Job_Search_Results/<candidate_name>_<date>/`. Generates `job_matches.csv`, executive `.docx` report, markdown summary, and metadata JSON files in one step.
 
+### 🎨 17. `export_canva_template_cv` *(Canva Modern Minimalist Template Engine)*
+* **Input:** `candidate_name` (str), `target_role` (str), `summary` (str), `experience_markdown` (str), `skills_list` (optional list), `education_list` (optional list), `contacts` (optional dict), `photo_path` (optional str)
+* **What it does:** Exports a tailored CV matching the exact Modern Minimalist layout from Canva (`https://agriculturalmachineryturkey.my.canva.site/`). Automatically builds both an executive `.docx` file (with `#97A6B9` slate banner, `#D7DDE4` vertical divider, and right-click photo slot) and an interactive, print-to-PDF ready `.html` file with drag-and-drop photo uploading.
+
 ---
 
 ## 📦 Prerequisites & Quick Setup
@@ -225,7 +229,7 @@ Install and configure the JobsDirect MCP server into my Antigravity setup:
    - Args: Full absolute path to `jobs_direct.py` (ensure Windows backslashes are escaped)
    - Environment variables: Set `JOBSDIRECT_CONTACTS_OUTPUT` to the absolute path of `output/hiring_contacts_output.csv` inside the repo.
 4. Copy the bundled agent skills (`skills/hybrid-ats-positioning` and `skills/osint-hiring-bypass`) into `~/.gemini/config/skills/`.
-5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 16 MCP tools are registered.
+5. Run a sanity check to verify that `jobs_direct.py` and `agent.py` import cleanly, and confirm once all 17 MCP tools are registered.
 ````
 
 ---
